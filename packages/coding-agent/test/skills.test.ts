@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -12,7 +12,7 @@ import {
 	parseSkillInvocation,
 	type Skill,
 } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { getAgentDir, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
 
 const fixturesDir = path.resolve(import.meta.dirname, "fixtures/skills");
 const collisionFixturesDir = path.resolve(import.meta.dirname, "fixtures/skills-collision");
@@ -46,6 +46,25 @@ const DISABLE_ALL_BUILTIN_SKILLS = {
 } as const;
 
 describe("skills", () => {
+	let originalAgentDir: string;
+	let tempTestHomeDir: string;
+	let globalHomedirSpy: ReturnType<typeof spyOn>;
+
+	beforeAll(async () => {
+		originalAgentDir = getAgentDir();
+		tempTestHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-skills-test-home-"));
+		globalHomedirSpy = spyOn(os, "homedir").mockReturnValue(tempTestHomeDir);
+		setAgentDir(path.join(tempTestHomeDir, ".omp", "agent"));
+	});
+
+	afterAll(async () => {
+		globalHomedirSpy?.mockRestore();
+		setAgentDir(originalAgentDir);
+		if (tempTestHomeDir) {
+			await removeWithRetries(tempTestHomeDir);
+		}
+	});
+
 	describe("loadSkillsFromDir", () => {
 		let fixtureRoot: LoadSkillsResult;
 

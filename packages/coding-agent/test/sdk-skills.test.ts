@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -43,6 +43,8 @@ describe("createAgentSession skills option", () => {
 	let skillsDir: string;
 	let tempHomeDir = "";
 	let originalHome: string | undefined;
+	let originalAgentDir: string;
+	let homedirSpy: ReturnType<typeof spyOn>;
 	// Auth storage (SQLite DB) and the model registry are immutable across these tests: skill
 	// discovery never touches models, and building them per test would make createAgentSession call
 	// modelRegistry.refreshInBackground(), whose online model discovery saturates the event loop and
@@ -64,6 +66,7 @@ describe("createAgentSession skills option", () => {
 	});
 
 	beforeEach(() => {
+		originalAgentDir = getAgentDir();
 		tempDir = path.join(os.tmpdir(), `pi-sdk-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		// Create skill in .omp/skills/ for native project-level discovery
 		skillsDir = path.join(tempDir, ".omp", "skills", "test-skill");
@@ -71,6 +74,8 @@ describe("createAgentSession skills option", () => {
 		originalHome = process.env.HOME;
 		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sdk-home-"));
 		process.env.HOME = tempHomeDir;
+		homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHomeDir);
+		setAgentDir(path.join(tempHomeDir, ".omp", "agent"));
 		const nativeUserSkillsDir = path.join(tempHomeDir, ".omp", "agent", "skills");
 		fs.mkdirSync(nativeUserSkillsDir, { recursive: true });
 
@@ -105,7 +110,11 @@ Loaded via symbolic link.
 		fs.symlinkSync(externalSkillDir, path.join(path.dirname(skillsDir), "symlinked-skill-link"), "dir");
 	});
 
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
+	afterEach(() => {
+		homedirSpy?.mockRestore();
+		setAgentDir(originalAgentDir);
+		cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome }))();
+	});
 
 	it("should discover skills by default and expose them on session.skills", async () => {
 		const { session } = await createAgentSession({
